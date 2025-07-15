@@ -42,29 +42,23 @@ float g_fLastClickTime[MAXPLAYERS + 1];
 int g_iPreviousButtons[MAXPLAYERS + 1];
 Handle g_hPreviewTimer[MAXPLAYERS + 1];
 
-// Visual assets
-int g_iLaserMaterial = -1;
-int g_iHaloMaterial = -1;
-
-// Callback storage
-Handle g_hCallbacks[MAXPLAYERS + 1];
-Handle g_hPlugins[MAXPLAYERS + 1];
-
 // Native function declarations
 native bool AreaSelector_Start(int client);
 native bool AreaSelector_Cancel(int client);
 native bool AreaSelector_IsSelecting(int client);
-native bool AreaSelector_StartWithCallback(int client, Function callback);
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max) {
     CreateNative("AreaSelector_Start", Native_Start);
     CreateNative("AreaSelector_Cancel", Native_Cancel);
     CreateNative("AreaSelector_IsSelecting", Native_IsSelecting);
-    CreateNative("AreaSelector_StartWithCallback", Native_StartWithCallback);
     
-    RegPluginLibrary("area_selector");
+    RegPluginLibrary("areaselector");
     return APLRes_Success;
 }
+
+// Visual assets
+int g_iLaserMaterial = -1;
+int g_iHaloMaterial = -1;
 
 public void OnPluginStart() {
     // Create global forwards
@@ -85,7 +79,7 @@ public void OnPluginStart() {
         Param_Cell      // client
     );
     
-    // Forward for display updates - lets plugins handle their own HUD/display
+    // Forward for display updates - lets plugins handle their own display/feedback
     g_hOnDisplayUpdate = new GlobalForward("AreaSelector_OnDisplayUpdate",
         ET_Ignore,
         Param_Cell,     // client
@@ -129,8 +123,6 @@ void ResetClientData(int client) {
     g_fVerticalOffset[client] = 0.0;
     g_fLastClickTime[client] = 0.0;
     g_iPreviousButtons[client] = 0;
-    g_hCallbacks[client] = null;
-    g_hPlugins[client] = null;
 }
 
 // Native implementations
@@ -144,26 +136,6 @@ public int Native_Start(Handle plugin, int numParams) {
     if (g_bIsSelecting[client]) {
         return false;
     }
-    
-    StartSelection(client);
-    return true;
-}
-
-public int Native_StartWithCallback(Handle plugin, int numParams) {
-    int client = GetNativeCell(1);
-    Function callback = GetNativeFunction(2);
-    
-    if (!IsValidClient(client)) {
-        return false;
-    }
-    
-    if (g_bIsSelecting[client]) {
-        return false;
-    }
-    
-    g_hCallbacks[client] = CreateForward(ET_Ignore, Param_Cell, Param_Array);
-    g_hPlugins[client] = plugin;
-    AddToForward(g_hCallbacks[client], plugin, callback);
     
     StartSelection(client);
     return true;
@@ -202,10 +174,6 @@ void StartSelection(int client) {
     g_fVerticalOffset[client] = 0.0;
     g_fLastClickTime[client] = 0.0;
     
-    PrintToChat(client, "\x04[Area Selector]\x01 Point at a location and \x05double-click left mouse\x01 to set first corner.");
-    PrintToChat(client, "\x04[Area Selector]\x01 Use \x05left-click\x01 to raise height and \x05right-click\x01 to lower height.");
-    PrintToChat(client, "\x04[Area Selector]\x01 Current height offset: \x030\x01 units");
-    
     g_hPreviewTimer[client] = CreateTimer(0.1, Timer_Preview, client, TIMER_REPEAT);
 }
 
@@ -219,15 +187,6 @@ void CancelSelection(int client) {
     Call_StartForward(g_hOnAreaCancelled);
     Call_PushCell(client);
     Call_Finish();
-    
-    // Clean up callback if exists
-    if (g_hCallbacks[client] != null) {
-        delete g_hCallbacks[client];
-        g_hCallbacks[client] = null;
-    }
-    g_hPlugins[client] = null;
-    
-    PrintToChat(client, "\x04[Area Selector]\x01 Selection cancelled.");
 }
 
 void CleanupPreview(int client) {
@@ -366,10 +325,6 @@ void ProcessClick(int client) {
                 g_fPoints[client][0][i] = endPos[i];
             }
             
-            PrintToChat(client, "\x04[Area Selector]\x01 First corner set at: %.0f, %.0f, %.0f", 
-                endPos[0], endPos[1], endPos[2]);
-            PrintToChat(client, "\x04[Area Selector]\x01 Now set the second corner.");
-            
             g_fVerticalOffset[client] = 0.0;
             g_iSelectionStep[client] = 2;
         }
@@ -378,9 +333,6 @@ void ProcessClick(int client) {
             for (int i = 0; i < 3; i++) {
                 g_fPoints[client][1][i] = endPos[i];
             }
-            
-            PrintToChat(client, "\x04[Area Selector]\x01 Second corner set at: %.0f, %.0f, %.0f", 
-                endPos[0], endPos[1], endPos[2]);
             
             CompleteSelection(client);
         }
@@ -416,27 +368,11 @@ void CompleteSelection(int client) {
     Call_PushArray(area.dimensions, 3);
     Call_Finish();
     
-    // Fire callback if exists
-    if (g_hCallbacks[client] != null) {
-        Call_StartForward(g_hCallbacks[client]);
-        Call_PushCell(client);
-        Call_PushArray(area, sizeof(area));
-        Call_Finish();
-        
-        delete g_hCallbacks[client];
-        g_hCallbacks[client] = null;
-    }
-    
     // Cleanup
     CleanupPreview(client);
     g_bIsSelecting[client] = false;
     g_iSelectionStep[client] = 0;
     g_fVerticalOffset[client] = 0.0;
-    g_hPlugins[client] = null;
-    
-    PrintToChat(client, "\x04[Area Selector]\x01 Area selection complete!");
-    PrintToChat(client, "\x04[Area Selector]\x01 Dimensions: %.0f x %.0f x %.0f units", 
-        area.dimensions[0], area.dimensions[1], area.dimensions[2]);
 }
 
 public bool TraceFilterPlayers(int entity, int contentsMask) {

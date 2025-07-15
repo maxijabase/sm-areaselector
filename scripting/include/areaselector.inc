@@ -1,7 +1,7 @@
-#if defined _area_selector_included
+#if defined _areaselector_included
   #endinput
 #endif
-#define _area_selector_included
+#define _areaselector_included
 
 /**
  * Area Selection Library
@@ -136,9 +136,9 @@ stock bool AreaSelector_IsPointInArea(float point[3], float mins[3], float maxs[
             point[2] >= mins[2] && point[2] <= maxs[2]);
 }
 
-public SharedPlugin __pl_area_selector = {
-    name = "area_selector",
-    file = "area_selector.smx",
+public SharedPlugin __pl_areaselector = {
+    name = "areaselector",
+    file = "areaselector.smx",
 #if defined REQUIRE_PLUGIN
     required = 1,
 #else
