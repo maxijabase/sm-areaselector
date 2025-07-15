@@ -28,9 +28,10 @@ public Plugin myinfo = {
     url = ""
 };
 
-// Natives
-Handle g_hOnAreaSelected = null;
-Handle g_hOnAreaCancelled = null;
+// Forwards
+GlobalForward g_hOnAreaSelected;
+GlobalForward g_hOnAreaCancelled;
+GlobalForward g_hOnDisplayUpdate;
 
 // Selection state for each client
 bool g_bIsSelecting[MAXPLAYERS + 1];
@@ -67,7 +68,7 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 
 public void OnPluginStart() {
     // Create global forwards
-    g_hOnAreaSelected = CreateGlobalForward("AreaSelector_OnAreaSelected", 
+    g_hOnAreaSelected = new GlobalForward("AreaSelector_OnAreaSelected", 
         ET_Ignore, 
         Param_Cell,     // client
         Param_Array,    // AreaData struct
@@ -79,9 +80,21 @@ public void OnPluginStart() {
         Param_Array     // dimensions
     );
     
-    g_hOnAreaCancelled = CreateGlobalForward("AreaSelector_OnAreaCancelled", 
+    g_hOnAreaCancelled = new GlobalForward("AreaSelector_OnAreaCancelled", 
         ET_Ignore, 
         Param_Cell      // client
+    );
+    
+    // Forward for display updates - lets plugins handle their own HUD/display
+    g_hOnDisplayUpdate = new GlobalForward("AreaSelector_OnDisplayUpdate",
+        ET_Ignore,
+        Param_Cell,     // client
+        Param_Cell,     // selection step (1 or 2)
+        Param_Array,    // current position [3]
+        Param_Float,    // height offset
+        Param_Array,    // first point [3] (if step 2)
+        Param_Array,    // area dimensions [3] (if step 2, width/length/height)
+        Param_Float     // volume (if step 2)
     );
     
     // Hook all current players
@@ -254,31 +267,51 @@ public Action Timer_Preview(Handle timer, int client) {
         TE_SetupBeamRingPoint(endPos, 5.0, 8.0, g_iLaserMaterial, g_iHaloMaterial, 0, 15, 0.1, 2.0, 0.0, color, 1, 0);
         TE_SendToClient(client);
         
-        // Preview the area if we have both points
-        if (g_iSelectionStep[client] == 2) {
-            float mins[3], maxs[3];
-            
-            for (int i = 0; i < 3; i++) {
-                mins[i] = (g_fPoints[client][0][i] < endPos[i]) ? g_fPoints[client][0][i] : endPos[i];
-                maxs[i] = (g_fPoints[client][0][i] > endPos[i]) ? g_fPoints[client][0][i] : endPos[i];
-            }
-            
-            // Draw preview box
-            int boxColor[4] = {0, 255, 255, 255}; // Cyan
-            TE_SendBeamBoxToClient(client, mins, maxs, g_iLaserMaterial, g_iHaloMaterial, 0, 30, 0.1, 3.0, 3.0, 2, 1.0, boxColor, 0);
-            
-            // Display dimensions
-            float width = maxs[0] - mins[0];
-            float length = maxs[1] - mins[1];
-            float height = maxs[2] - mins[2];
-            
-            PrintHintText(client, "Area: %.0f x %.0f x %.0f units", width, length, height);
-        } else {
-            PrintHintText(client, "Height offset: %.0f units", g_fVerticalOffset[client]);
-        }
+        // Update display via forward - let plugins decide how to handle it
+        UpdateDisplayViaForward(client, endPos);
     }
     
     return Plugin_Continue;
+}
+
+void UpdateDisplayViaForward(int client, float currentPos[3]) {
+    float dimensions[3] = {0.0, 0.0, 0.0};
+    float volume = 0.0;
+    float firstPoint[3] = {0.0, 0.0, 0.0};
+    
+    if (g_iSelectionStep[client] == 2) {
+        // Calculate area info for step 2
+        float mins[3], maxs[3];
+        
+        for (int i = 0; i < 3; i++) {
+            mins[i] = (g_fPoints[client][0][i] < currentPos[i]) ? g_fPoints[client][0][i] : currentPos[i];
+            maxs[i] = (g_fPoints[client][0][i] > currentPos[i]) ? g_fPoints[client][0][i] : currentPos[i];
+            dimensions[i] = maxs[i] - mins[i];
+            firstPoint[i] = g_fPoints[client][0][i];
+        }
+        
+        volume = dimensions[0] * dimensions[1] * dimensions[2];
+        
+        // Draw preview box
+        int boxColor[4] = {0, 255, 255, 255}; // Cyan
+        TE_SendBeamBoxToClient(client, mins, maxs, g_iLaserMaterial, g_iHaloMaterial, 0, 30, 0.1, 3.0, 3.0, 2, 1.0, boxColor, 0);
+    } else {
+        // For step 1, copy current position to firstPoint for consistency
+        for (int i = 0; i < 3; i++) {
+            firstPoint[i] = currentPos[i];
+        }
+    }
+    
+    // Fire the display update forward
+    Call_StartForward(g_hOnDisplayUpdate);
+    Call_PushCell(client);
+    Call_PushCell(g_iSelectionStep[client]);
+    Call_PushArray(currentPos, 3);
+    Call_PushFloat(g_fVerticalOffset[client]);
+    Call_PushArray(firstPoint, 3);
+    Call_PushArray(dimensions, 3);
+    Call_PushFloat(volume);
+    Call_Finish();
 }
 
 public Action OnClientPreThink(int client) {
@@ -297,7 +330,6 @@ public Action OnClientPreThink(int client) {
             g_fLastClickTime[client] = 0.0;
         } else {
             g_fVerticalOffset[client] += HEIGHT_ADJUST_INCREMENT;
-            PrintHintText(client, "Height: %.0f units | Double-click to set point", g_fVerticalOffset[client]);
             EmitSoundToClient(client, "buttons/button14.wav");
             g_fLastClickTime[client] = currentTime;
         }
@@ -306,7 +338,6 @@ public Action OnClientPreThink(int client) {
     // Right click for decreasing height
     if ((currentButtons & IN_ATTACK2) && !(g_iPreviousButtons[client] & IN_ATTACK2)) {
         g_fVerticalOffset[client] -= HEIGHT_ADJUST_INCREMENT;
-        PrintHintText(client, "Height: %.0f units | Double-click to set point", g_fVerticalOffset[client]);
         EmitSoundToClient(client, "buttons/button14.wav");
     }
     
@@ -404,6 +435,8 @@ void CompleteSelection(int client) {
     g_hPlugins[client] = null;
     
     PrintToChat(client, "\x04[Area Selector]\x01 Area selection complete!");
+    PrintToChat(client, "\x04[Area Selector]\x01 Dimensions: %.0f x %.0f x %.0f units", 
+        area.dimensions[0], area.dimensions[1], area.dimensions[2]);
 }
 
 public bool TraceFilterPlayers(int entity, int contentsMask) {

@@ -44,6 +44,21 @@ forward void AreaSelector_OnAreaSelected(int client, AreaData area, float point1
 forward void AreaSelector_OnAreaCancelled(int client);
 
 /**
+ * Called during area selection to allow plugins to handle display updates
+ * This forward is called every 0.1 seconds while a client is selecting an area
+ *
+ * @param client        Client index who is selecting
+ * @param step          Selection step (1 = first corner, 2 = second corner)
+ * @param currentPos    Current position the client is aiming at [3]
+ * @param heightOffset  Current height offset being applied
+ * @param firstPoint    First corner coordinates [3] (valid when step == 2)
+ * @param dimensions    Area dimensions [3] (width, length, height - valid when step == 2)
+ * @param volume        Area volume (valid when step == 2)
+ * @noreturn
+ */
+forward void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], float heightOffset, float firstPoint[3], float dimensions[3], float volume);
+
+/**
  * Callback function type for area selection completion
  *
  * @param client        Client who completed the selection

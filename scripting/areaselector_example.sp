@@ -30,6 +30,12 @@ Handle g_hDisplayTimer = null;
 int g_iLaserMaterial = -1;
 int g_iHaloMaterial = -1;
 
+// HUD synchronizer for selection display
+Handle g_hSelectionHudSync = null;
+
+// Display preferences
+bool g_bShowSelectionHUD[MAXPLAYERS + 1] = {true, ...};
+
 public void OnPluginStart() {
     RegAdminCmd("sm_createarea", Command_CreateArea, ADMFLAG_GENERIC, "Create a new persistent area");
     RegAdminCmd("sm_deletearea", Command_DeleteArea, ADMFLAG_GENERIC, "Delete an area by ID");
@@ -37,6 +43,10 @@ public void OnPluginStart() {
     RegAdminCmd("sm_clearallareas", Command_ClearAllAreas, ADMFLAG_GENERIC, "Clear all areas");
     RegAdminCmd("sm_showareas", Command_ShowAreas, ADMFLAG_GENERIC, "Toggle area display");
     RegAdminCmd("sm_areainfo", Command_AreaInfo, ADMFLAG_GENERIC, "Get info about the area you're standing in");
+    RegAdminCmd("sm_toggleselectionhud", Command_ToggleSelectionHUD, ADMFLAG_GENERIC, "Toggle selection HUD display");
+    
+    // Create HUD synchronizer for selection display
+    g_hSelectionHudSync = CreateHudSynchronizer();
 }
 
 public void OnMapStart() {
@@ -59,6 +69,11 @@ public void OnMapEnd() {
     }
 }
 
+public void OnClientDisconnect(int client) {
+    // Clear any selection HUD when client disconnects
+    g_bShowSelectionHUD[client] = true; // Reset to default
+}
+
 public Action Command_CreateArea(int client, int args) {
     if (g_iAreaCount >= MAX_AREAS) {
         PrintToChat(client, "[Areas] Maximum number of areas (%d) reached!", MAX_AREAS);
@@ -68,6 +83,7 @@ public Action Command_CreateArea(int client, int args) {
     if (!AreaSelector_IsSelecting(client)) {
         if (AreaSelector_Start(client)) {
             PrintToChat(client, "[Areas] Start selecting your area. Area will be saved when complete.");
+            PrintToChat(client, "[Areas] Use 'sm_toggleselectionhud' to toggle HUD display during selection.");
         } else {
             PrintToChat(client, "[Areas] Failed to start area selection.");
         }
@@ -153,6 +169,22 @@ public Action Command_ShowAreas(int client, int args) {
     return Plugin_Handled;
 }
 
+public Action Command_ToggleSelectionHUD(int client, int args) {
+    g_bShowSelectionHUD[client] = !g_bShowSelectionHUD[client];
+    
+    if (g_bShowSelectionHUD[client]) {
+        PrintToChat(client, "[Areas] Selection HUD enabled.");
+    } else {
+        PrintToChat(client, "[Areas] Selection HUD disabled.");
+        // Clear current HUD if they're selecting
+        if (AreaSelector_IsSelecting(client)) {
+            ClearSyncHud(client, g_hSelectionHudSync);
+        }
+    }
+    
+    return Plugin_Handled;
+}
+
 public Action Command_AreaInfo(int client, int args) {
     float playerPos[3];
     GetClientAbsOrigin(client, playerPos);
@@ -196,6 +228,9 @@ public void AreaSelector_OnAreaSelected(int client, AreaData area, float point1[
         return;
     }
     
+    // Clear selection HUD
+    ClearSyncHud(client, g_hSelectionHudSync);
+    
     // Save the area
     g_Areas[g_iAreaCount] = area;
     g_iAreaCreators[g_iAreaCount] = client;
@@ -212,8 +247,68 @@ public void AreaSelector_OnAreaSelected(int client, AreaData area, float point1[
     PrintToChat(client, "[Areas] Area #%d created successfully!", g_iAreaCount);
     PrintToChat(client, "  Name: %s", g_sAreaNames[g_iAreaCount]);
     PrintToChat(client, "  Size: %.0f x %.0f x %.0f", dimensions[0], dimensions[1], dimensions[2]);
+    PrintToChat(client, "  Volume: %.0f cubic units", AreaSelector_GetVolume(dimensions));
     
     g_iAreaCount++;
+}
+
+// Forward handler - clear HUD when selection is cancelled
+public void AreaSelector_OnAreaCancelled(int client) {
+    ClearSyncHud(client, g_hSelectionHudSync);
+    PrintToChat(client, "[Areas] Area selection cancelled.");
+}
+
+// Forward handler - display selection progress
+public void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], float heightOffset, float firstPoint[3], float dimensions[3], float volume) {
+    // Only show HUD if client has it enabled
+    if (!g_bShowSelectionHUD[client]) {
+        return;
+    }
+    
+    char hudText[512];
+    
+    if (step == 1) {
+        // First corner selection
+        Format(hudText, sizeof(hudText), 
+            "═══ AREA SELECTION ═══\n" ...
+            "Step 1/2: Setting First Corner\n" ...
+            "\n" ...
+            "Position: %.0f, %.0f, %.0f\n" ...
+            "Height Offset: %.0f units\n" ...
+            "\n" ...
+            "Controls:\n" ...
+            "• Double-click: Set corner\n" ...
+            "• Left-click: Raise height (+8)\n" ...
+            "• Right-click: Lower height (-8)\n" ...
+            "\n" ...
+            "Use 'sm_toggleselectionhud' to hide this",
+            currentPos[0], currentPos[1], currentPos[2],
+            heightOffset);
+    } else if (step == 2) {
+        // Second corner selection with area preview
+        Format(hudText, sizeof(hudText), 
+            "═══ AREA SELECTION ═══\n" ...
+            "Step 2/2: Setting Second Corner\n" ...
+            "\n" ...
+            "Position: %.0f, %.0f, %.0f\n" ...
+            "Height Offset: %.0f units\n" ...
+            "\n" ...
+            "Area Preview:\n" ...
+            "• Width: %.0f units\n" ...
+            "• Length: %.0f units\n" ...
+            "• Height: %.0f units\n" ...
+            "• Volume: %.0f units³\n" ...
+            "\n" ...
+            "Double-click to complete selection",
+            currentPos[0], currentPos[1], currentPos[2],
+            heightOffset,
+            dimensions[0], dimensions[1], dimensions[2],
+            volume);
+    }
+    
+    // Display HUD text using synchronizer
+    SetHudTextParams(-1.0, 0.15, 0.15, 100, 200, 255, 255, 0, 0.0, 0.0, 0.0);
+    ShowSyncHudText(client, g_hSelectionHudSync, hudText);
 }
 
 // Timer to display all areas
@@ -249,8 +344,8 @@ void DrawAreaForAll(int areaIndex) {
         // Draw the box
         TE_SendBeamBoxToClient(
             client,
+            g_Areas[areaIndex].maxs, // Note: this should be maxs first for correct box drawing
             g_Areas[areaIndex].mins,
-            g_Areas[areaIndex].maxs,
             g_iLaserMaterial,
             g_iHaloMaterial,
             0,
