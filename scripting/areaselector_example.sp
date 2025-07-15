@@ -38,6 +38,7 @@ bool g_bShowSelectionHUD[MAXPLAYERS + 1] = {true, ...};
 
 public void OnPluginStart() {
     RegAdminCmd("sm_createarea", Command_CreateArea, ADMFLAG_GENERIC, "Create a new persistent area");
+    RegAdminCmd("sm_cancelarea", Command_CancelArea, ADMFLAG_GENERIC, "Cancel current area selection");
     RegAdminCmd("sm_deletearea", Command_DeleteArea, ADMFLAG_GENERIC, "Delete an area by ID");
     RegAdminCmd("sm_listareas", Command_ListAreas, ADMFLAG_GENERIC, "List all created areas");
     RegAdminCmd("sm_clearallareas", Command_ClearAllAreas, ADMFLAG_GENERIC, "Clear all areas");
@@ -83,12 +84,27 @@ public Action Command_CreateArea(int client, int args) {
     if (!AreaSelector_IsSelecting(client)) {
         if (AreaSelector_Start(client)) {
             PrintToChat(client, "[Areas] Start selecting your area. Area will be saved when complete.");
-            PrintToChat(client, "[Areas] Use 'sm_toggleselectionhud' to toggle HUD display during selection.");
+            PrintToChat(client, "[Areas] Use 'sm_cancelarea' to cancel selection or 'sm_toggleselectionhud' to toggle HUD display.");
         } else {
             PrintToChat(client, "[Areas] Failed to start area selection.");
         }
     } else {
-        PrintToChat(client, "[Areas] You are already selecting an area!");
+        PrintToChat(client, "[Areas] You are already selecting an area! Use 'sm_cancelarea' to cancel first.");
+    }
+    
+    return Plugin_Handled;
+}
+
+public Action Command_CancelArea(int client, int args) {
+    if (!AreaSelector_IsSelecting(client)) {
+        PrintToChat(client, "[Areas] You are not currently selecting an area.");
+        return Plugin_Handled;
+    }
+    
+    if (AreaSelector_Cancel(client)) {
+        PrintToChat(client, "[Areas] Area selection cancelled successfully.");
+    } else {
+        PrintToChat(client, "[Areas] Failed to cancel area selection.");
     }
     
     return Plugin_Handled;
