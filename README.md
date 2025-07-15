@@ -15,8 +15,7 @@ A minimal SourceMod library that provides 3D area selection functionality for So
 ## Installation
 
 1. Place `areaselector.smx` in your `plugins/` folder
-2. Place `areaselector.inc` in your `scripting/include/` folder
-3. Restart your server or load the plugin with `sm plugins load areaselector`
+2. Restart your server or load the plugin with `sm plugins load areaselector`
 
 ## How It Works
 
