@@ -59,32 +59,12 @@ forward void AreaSelector_OnAreaCancelled(int client);
 forward void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], float heightOffset, float firstPoint[3], float dimensions[3], float volume);
 
 /**
- * Callback function type for area selection completion
- *
- * @param client        Client who completed the selection
- * @param area          AreaData structure with all area information
- * @noreturn
- */
-typeset AreaSelectedCallback {
-    function void(int client, AreaData area);
-};
-
-/**
  * Start area selection for a client
  *
  * @param client        Client index to start selection for
  * @return              True if selection started, false if client is already selecting
  */
 native bool AreaSelector_Start(int client);
-
-/**
- * Start area selection for a client with a specific callback
- *
- * @param client        Client index to start selection for
- * @param callback      Function to call when selection is complete
- * @return              True if selection started, false if client is already selecting
- */
-native bool AreaSelector_StartWithCallback(int client, AreaSelectedCallback callback);
 
 /**
  * Cancel area selection for a client

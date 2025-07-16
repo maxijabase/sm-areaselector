@@ -1,6 +1,6 @@
-# Area Selector Library
+# [LIB/API] Area Selector
 
-A minimal SourceMod library that provides 3D area selection functionality for Source engine games. This plugin allows players to select rectangular areas in the game world using an intuitive point-and-click interface with visual feedback.
+A SourceMod library that provides 3D area selection functionality for Source engine games. This plugin allows players to select rectangular areas in the game world using an intuitive point-and-click interface with visual feedback.
 
 ## Features
 
@@ -8,8 +8,6 @@ A minimal SourceMod library that provides 3D area selection functionality for So
 - **Height adjustment** - Real-time height offset control with mouse clicks
 - **Built-in visual feedback** - Beam rings and area preview boxes show selection progress
 - **Audio feedback** - Button click sounds for height adjustments
-- **Multiple integration methods** - Forwards, callbacks, and natives support
-- **Minimal design** - Library handles visuals and logic, plugins control messaging
 - **Comprehensive area data** - Complete information about selected areas
 
 ## Installation
@@ -63,56 +61,77 @@ public void AreaSelector_OnAreaSelected(int client, AreaData area, float point1[
                                       float center[3], float dimensions[3]) {
     PrintToChat(client, "Area selected! Size: %.0fx%.0fx%.0f", 
                dimensions[0], dimensions[1], dimensions[2]);
-    // Library already showed visual preview - plugin just handles completion message
 }
 ```
 
-### Available Natives
+### Natives
 
 ```sourcepawn
-// Start area selection
+/**
+ * Start area selection for a client
+ *
+ * @param client        Client index to start selection for
+ * @return              True if selection started, false if client is already selecting
+ */
 native bool AreaSelector_Start(int client);
 
-// Cancel ongoing selection
+/**
+ * Cancel area selection for a client
+ *
+ * @param client        Client index to cancel selection for
+ * @return              True if selection was cancelled, false if client wasn't selecting
+ */
 native bool AreaSelector_Cancel(int client);
 
-// Check if client is selecting
+/**
+ * Check if a client is currently selecting an area
+ *
+ * @param client        Client index to check
+ * @return              True if client is selecting, false otherwise
+ */
 native bool AreaSelector_IsSelecting(int client);
 ```
 
 ### Forwards
 
-#### AreaSelector_OnAreaSelected
-Called when area selection is completed.
-
 ```sourcepawn
-public void AreaSelector_OnAreaSelected(int client, AreaData area, float point1[3], 
-                                      float point2[3], float mins[3], float maxs[3], 
-                                      float center[3], float dimensions[3]) {
-    // Handle completed area selection
-}
-```
+/**
+ * Called when a client completes an area selection
+ *
+ * @param client        Client index who completed the selection
+ * @param area          AreaData structure with all area information
+ * @param point1        First corner point coordinates
+ * @param point2        Second corner point coordinates
+ * @param mins          Minimum bounds of the area
+ * @param maxs          Maximum bounds of the area
+ * @param center        Center point of the area
+ * @param dimensions    Dimensions of the area (width, length, height)
+ * @noreturn
+ */
+forward void AreaSelector_OnAreaSelected(int client, AreaData area, float point1[3], float point2[3], float mins[3], float maxs[3], float center[3], float dimensions[3]);
 
-#### AreaSelector_OnAreaCancelled
-Called when area selection is cancelled.
+/**
+ * Called when a client cancels an area selection
+ *
+ * @param client        Client index who cancelled the selection
+ * @noreturn
+ */
+forward void AreaSelector_OnAreaCancelled(int client);
 
-```sourcepawn
-public void AreaSelector_OnAreaCancelled(int client) {
-    // Handle cancelled selection
-}
-```
-
-#### AreaSelector_OnDisplayUpdate
-Called every 0.1 seconds during selection for custom text/HUD display.
-
-```sourcepawn
-public void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], 
-                                       float heightOffset, float firstPoint[3], 
-                                       float dimensions[3], float volume) {
-    // Handle text display - library already shows visual rings/boxes
-    // step: 1 = first corner, 2 = second corner
-    // dimensions and volume are only valid when step == 2
-}
+/**
+ * Called during area selection to allow plugins to handle display updates
+ * This forward is called every 0.1 seconds while a client is selecting an area
+ *
+ * @param client        Client index who is selecting
+ * @param step          Selection step (1 = first corner, 2 = second corner)
+ * @param currentPos    Current position the client is aiming at [3]
+ * @param heightOffset  Current height offset being applied
+ * @param firstPoint    First corner coordinates [3] (valid when step == 2)
+ * @param dimensions    Area dimensions [3] (width, length, height - valid when step == 2)
+ * @param volume        Area volume (valid when step == 2)
+ * @noreturn
+ */
+forward void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], float heightOffset, float firstPoint[3], float dimensions[3], float volume);
 ```
 
 ### Area Data Structure
@@ -185,43 +204,7 @@ public void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[
 }
 ```
 
-### Center Text Display
-```sourcepawn
-public void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], 
-                                       float heightOffset, float firstPoint[3], 
-                                       float dimensions[3], float volume) {
-    if (step == 1) {
-        PrintCenterText(client, "Step 1/2 - Height: %.0f", heightOffset);
-    } else {
-        PrintCenterText(client, "Step 2/2 - Size: %.0fx%.0fx%.0f", 
-                       dimensions[0], dimensions[1], dimensions[2]);
-    }
-}
-```
-
-### No Text Display
-```sourcepawn
-public void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], 
-                                       float heightOffset, float firstPoint[3], 
-                                       float dimensions[3], float volume) {
-    // Do nothing - rely purely on library's visual feedback
-}
-```
-
 ## Advanced Usage
-
-### Conditional Display
-```sourcepawn
-bool g_bShowHUD[MAXPLAYERS + 1] = {true, ...};
-
-public void AreaSelector_OnDisplayUpdate(int client, int step, float currentPos[3], 
-                                       float heightOffset, float firstPoint[3], 
-                                       float dimensions[3], float volume) {
-    if (!g_bShowHUD[client]) return;
-    
-    // Show display only for clients who want it
-}
-```
 
 ### Multiple Area Storage
 ```sourcepawn
